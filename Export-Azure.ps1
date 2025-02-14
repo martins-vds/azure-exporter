@@ -42,12 +42,38 @@ $ErrorActionPreference = "Stop"
 
 # Ensure the Az module is installed and imported.
 if (-not (Get-Module -ListAvailable -Name Az)) {
-    Write-Error "Az module is not installed. Install it with: Install-Module -Name Az"
+    Write-Error "Az module is not installed. Install it with: Install-Module -Name Az -Repository PSGallery -Force -AllowClobber"
     exit
 }
 
 # Ensure the user is logged in.
-Connect-AzAccount -Tenant $Tenant -Subscription $Subscription
+Connect-AzAccount -Tenant $Tenant -Subscription $Subscription | Out-Null
+
+##########################################################
+# Helper Function: Export-ResourcesToJson
+##########################################################
+function Export-ResourcesToJson {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SubscriptionId,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$ResourceType,
+        
+        [Parameter(Mandatory = $true)]
+        [object[]]$Resources
+    )
+    
+    if (-not $Resources) {
+        Write-Host "  No $ResourceType found in subscription: $SubscriptionId"
+    }
+    else {
+        $json = $Resources | ConvertTo-Json -Depth 100
+        $fileName = "$SubscriptionId`_$ResourceType" + "_export.json"
+        $json | Out-File -FilePath $fileName -Encoding utf8
+        Write-Host "  Exported $ResourceType from subscription $SubscriptionId to $fileName"
+    }
+}
 
 ##########################################
 # Strategy Interface and Export Strategies
@@ -65,16 +91,7 @@ class VirtualMachineExporter : IAzureResourceExporter {
     [void] Export([string] $subscriptionId) {
         Write-Host "Exporting all Azure Virtual Machines in subscription: $subscriptionId"
         $vms = Get-AzVM
-        if (-not $vms) {
-            Write-Host "  No Virtual Machines found."
-        }
-        else {
-            foreach ($vm in $vms) {
-                $fileName = "$($subscriptionId)_$($vm.Name)_VM_export.xml"
-                $vm | Export-CliXml -Path $fileName
-                Write-Host "  Exported VM '$($vm.Name)' to $fileName"
-            }
-        }
+        Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "VirtualMachines" -Resources $vms
     }
 }
 
@@ -83,17 +100,7 @@ class StorageAccountExporter : IAzureResourceExporter {
     [void] Export([string] $subscriptionId) {
         Write-Host "Exporting all Azure Storage Accounts in subscription: $subscriptionId"
         $storageAccounts = Get-AzStorageAccount
-        if (-not $storageAccounts) {
-            Write-Host "  No Storage Accounts found."
-        }
-        else {
-            foreach ($account in $storageAccounts) {
-                $accountName = $account.StorageAccountName
-                $fileName = "$($subscriptionId)_$($accountName)_Storage_export.xml"
-                $account | Export-CliXml -Path $fileName
-                Write-Host "  Exported Storage Account '$($accountName)' to $fileName"
-            }
-        }
+        Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "StorageAccounts" -Resources $storageAccounts
     }
 }
 
@@ -102,17 +109,7 @@ class ResourceGroupExporter : IAzureResourceExporter {
     [void] Export([string] $subscriptionId) {
         Write-Host "Exporting all Azure Resource Groups in subscription: $subscriptionId"
         $resourceGroups = Get-AzResourceGroup
-        if (-not $resourceGroups) {
-            Write-Host "  No Resource Groups found."
-        }
-        else {
-            foreach ($rg in $resourceGroups) {
-                $rgName = $rg.ResourceGroupName
-                $fileName = "$($subscriptionId)_$($rgName)_RG_export.xml"
-                $rg | Export-CliXml -Path $fileName
-                Write-Host "  Exported Resource Group '$($rgName)' to $fileName"
-            }
-        }
+        Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "ResourceGroups" -Resources $resourceGroups
     }
 }
 
