@@ -29,9 +29,6 @@ param (
 
     [Parameter(Mandatory = $true)]
     [string] $Subscription,
-
-    [Parameter(Mandatory = $false)]
-    [string[]] $SubscriptionIds,
     
     [Parameter(Mandatory = $false)]
     [ValidateSet(
