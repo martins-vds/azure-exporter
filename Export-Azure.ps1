@@ -74,7 +74,10 @@ param (
         "VpnGateways", 
         "WebApplicationFirewallPolicies"        
     )]
-    [string[]] $ResourceTypes = @("All")
+    [string[]] $ResourceTypes = @("All"),
+    [Parameter(Mandatory = $false)]
+    [switch] 
+    $SkipLogin
 )
 
 $ErrorActionPreference = "Stop"
@@ -86,12 +89,14 @@ if (-not (Get-Module -ListAvailable -Name Az)) {
     exit
 }
 
-# Ensure the user is logged in. 
-Connect-AzAccount -Tenant $Tenant -Subscription $Subscription | Out-Null
+if ($SkipLogin -eq $false) {
+    # Ensure the user is logged in. 
+    Connect-AzAccount -Tenant $Tenant -Subscription $Subscription | Out-Null
 
-# Some azure resources can only be exported through Az cli.
-az login --tenant $Tenant
-az account set --subscription $Subscription
+    # Some azure resources can only be exported through Az cli.
+    az login --tenant $Tenant
+    az account set --subscription $Subscription
+}
 
 ##########################################################
 # Helper Function: Export-ResourcesToJson
@@ -569,44 +574,44 @@ $exporterManager = [AzureExporterManager]::new($Subscription)
 # Mapping: resource type => exporter class name
 # Define a mapping from resource type to a scriptblock that returns a new exporter instance.
 $exporterMapping = [ordered]@{
-    "ApiManagement"                  = { [ApiManagementExporter]::new() }
-    "AppConfigurations"              = { [AppConfigurationsExporter]::new() }
-    "ApplicationGateways"            = { [ApplicationGatewaysExporter]::new() }
-    "AppServices"                    = { [AppServicesExporter]::new() }
+    "ApiManagement"              = { [ApiManagementExporter]::new() }
+    "AppConfigurations"          = { [AppConfigurationsExporter]::new() }
+    "ApplicationGateways"        = { [ApplicationGatewaysExporter]::new() }
+    "AppServices"                = { [AppServicesExporter]::new() }
     # "AzureBackup"                    = { [AzureBackupExporter]::new() } - Asks for a container name
-    "AzureBastion"                   = { [AzureBastionExporter]::new() }
+    "AzureBastion"               = { [AzureBastionExporter]::new() }
     # "AzureContainerInstances"        = { [AzureContainerInstancesExporter]::new() } - Find a way to export
-    "AzureDatabaseForMySQL"          = { [AzureDatabaseForMySQLExporter]::new() }
-    "AzureDatabaseForPostgres"       = { [AzureDatabaseForPostgresExporter]::new() }
+    "AzureDatabaseForMySQL"      = { [AzureDatabaseForMySQLExporter]::new() }
+    "AzureDatabaseForPostgres"   = { [AzureDatabaseForPostgresExporter]::new() }
     # "AzureDataFactory"               = { [AzureDataFactoryExporter]::new() } - Asks for resource group name
-    "AzureDdosProtection"            = { [AzureDdosProtectionExporter]::new() }
-    "AzureDnsZones"                  = { [AzureDnsZonesExporter]::new() }
-    "AzureExpressRouteCircuits"      = { [AzureExpressRouteCircuitsExporter]::new() }
-    "AzureFirewall"                  = { [AzureFirewallExporter]::new() }
-    "AzureFrontDoors"                = { [AzureFrontDoorsExporter]::new() }
-    "AzureFunctions"                 = { [AzureFunctionsExporter]::new() }
-    "AzureKubernetesService"         = { [AzureKubernetesServiceExporter]::new() }
-    "AzurePrivateLinkServices"       = { [AzurePrivateLinkServicesExporter]::new() }
-    "AzureSpotVirtualMachines"       = { [AzureSpotVirtualMachinesExporter]::new() }
-    "AzureSQL"                       = { [AzureSQLExporter]::new() }
-    "AzureVaultRecoveryServices"     = { [AzureVaultRecoveryServicesExporter]::new() }
-    "AzureVirtualDesktop"            = { [AzureVirtualDesktopExporter]::new() }
-    "BatchAccounts"                  = { [BatchAccountsExporter]::new() }
-    "KeyVault"                       = { [KeyVaultExporter]::new() }
-    "LogicApps"                      = { [LogicAppsExporter]::new() }
+    "AzureDdosProtection"        = { [AzureDdosProtectionExporter]::new() }
+    "AzureDnsZones"              = { [AzureDnsZonesExporter]::new() }
+    "AzureExpressRouteCircuits"  = { [AzureExpressRouteCircuitsExporter]::new() }
+    "AzureFirewall"              = { [AzureFirewallExporter]::new() }
+    "AzureFrontDoors"            = { [AzureFrontDoorsExporter]::new() }
+    "AzureFunctions"             = { [AzureFunctionsExporter]::new() }
+    "AzureKubernetesService"     = { [AzureKubernetesServiceExporter]::new() }
+    "AzurePrivateLinkServices"   = { [AzurePrivateLinkServicesExporter]::new() }
+    "AzureSpotVirtualMachines"   = { [AzureSpotVirtualMachinesExporter]::new() }
+    "AzureSQL"                   = { [AzureSQLExporter]::new() }
+    "AzureVaultRecoveryServices" = { [AzureVaultRecoveryServicesExporter]::new() }
+    "AzureVirtualDesktop"        = { [AzureVirtualDesktopExporter]::new() }
+    "BatchAccounts"              = { [BatchAccountsExporter]::new() }
+    "KeyVault"                   = { [KeyVaultExporter]::new() }
+    "LogicApps"                  = { [LogicAppsExporter]::new() }
     # "MicrosoftDefenderForCloud"      = { [MicrosoftDefenderForCloudExporter]::new() } - Find a way to export
     # "MicrosoftSentinel"              = { [MicrosoftSentinelExporter]::new() } - Find a way to export
-    "NetworkSecurityGroups"          = { [NetworkSecurityGroupsExporter]::new() }
-    "ResourceGroups"                 = { [ResourceGroupExporter]::new() }
-    "Roles"                          = { [RolesExporter]::new() }
-    "ServiceBus"                     = { [ServiceBusExporter]::new() }
-    "SqlManagedInstances"            = { [SqlManagedInstancesExporter]::new() }
-    "SqlServerOnAzureVMs"            = { [SqlServerOnAzureVMsExporter]::new() }
-    "StorageAccounts"                = { [StorageAccountExporter]::new() }
-    "TrafficManagerProfiles"         = { [TrafficManagerProfilesExporter]::new() }
-    "VirtualMachines"                = { [VirtualMachineExporter]::new() }
-    "VirtualNetworks"                = { [VirtualNetworksExporter]::new() }
-    "VirtualWans"                    = { [VirtualWansExporter]::new() }
+    "NetworkSecurityGroups"      = { [NetworkSecurityGroupsExporter]::new() }
+    "ResourceGroups"             = { [ResourceGroupExporter]::new() }
+    "Roles"                      = { [RolesExporter]::new() }
+    "ServiceBus"                 = { [ServiceBusExporter]::new() }
+    "SqlManagedInstances"        = { [SqlManagedInstancesExporter]::new() }
+    "SqlServerOnAzureVMs"        = { [SqlServerOnAzureVMsExporter]::new() }
+    "StorageAccounts"            = { [StorageAccountExporter]::new() }
+    "TrafficManagerProfiles"     = { [TrafficManagerProfilesExporter]::new() }
+    "VirtualMachines"            = { [VirtualMachineExporter]::new() }
+    "VirtualNetworks"            = { [VirtualNetworksExporter]::new() }
+    "VirtualWans"                = { [VirtualWansExporter]::new() }
     # "VpnGateways"                    = { [VpnGatewaysExporter]::new() } - Asks for resource group name
     # "WebApplicationFirewallPolicies" = { [WebApplicationFirewallPoliciesExporter]::new() } - Find a way to export   
 }
