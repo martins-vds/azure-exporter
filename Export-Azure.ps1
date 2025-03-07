@@ -133,8 +133,8 @@ $exporterManager = [AzureExporterManager]::new($Subscription)
 # Mapping: resource type => exporter class name
 # Define a mapping from resource type to a scriptblock that returns a new exporter instance.
 $exporterMapping = [ordered]@{
-    "ADB2CConfiguration"                    = { [ADB2CConfigurationExporter]::new() }
-    "AdministrativeUnits"                   = { [AdministrativeUnitsExporter]::new() }
+    # "ADB2CConfiguration"                    = { [ADB2CConfigurationExporter]::new() } - Find a way to export
+    # "AdministrativeUnits"                   = { [AdministrativeUnitsExporter]::new() } - Find a way to export
     "ApiManagement"                         = { [ApiManagementExporter]::new() }
     "AppConfigurations"                     = { [AppConfigurationsExporter]::new() }
     "AppServices"                           = { [AppServicesExporter]::new() }
@@ -158,10 +158,10 @@ $exporterMapping = [ordered]@{
     "AzureVaultRecoveryServices"            = { [AzureVaultRecoveryServicesExporter]::new() }
     "AzureVirtualDesktop"                   = { [AzureVirtualDesktopExporter]::new() }
     "BatchAccounts"                         = { [BatchAccountsExporter]::new() }
-    "ConditionalAccessPolicies"             = { [ConditionalAccessPoliciesExporter]::new() }
-    "CrossTenantConfiguration"              = { [CrossTenantConfigurationExporter]::new() }
-    "DelegatedPartnerPermissions"           = { [DelegatedPartnerPermissionsExporter]::new() }
-    "DiagnosticConfiguration"               = { [DiagnosticConfigurationExporter]::new() }
+    # "ConditionalAccessPolicies"             = { [ConditionalAccessPoliciesExporter]::new() } - Find a way to export
+    # "CrossTenantConfiguration"              = { [CrossTenantConfigurationExporter]::new() } - Find a way to export
+    # "DelegatedPartnerPermissions"           = { [DelegatedPartnerPermissionsExporter]::new() } - Find a way to export
+    # "DiagnosticConfiguration"               = { [DiagnosticConfigurationExporter]::new() } - Asks for resource id
     "EntraConnectConfiguration"             = { [EntraConnectConfigurationExporter]::new() }
     "EntraIDLicensing"                      = { [EntraIDLicensingExporter]::new() }
     "EntraPermissionsManagement"            = { [EntraPermissionsManagementExporter]::new() }
@@ -173,7 +173,6 @@ $exporterMapping = [ordered]@{
     "LogicApps"                             = { [LogicAppsExporter]::new() }
     "ManagedIdentitiesAndServicePrincipals" = { [ManagedIdentitiesAndServicePrincipalsExporter]::new() }
     "MFASettings"                           = { [MFASettingsExporter]::new() }
-    "MicrosoftCopilotForSecurity"           = { [MicrosoftCopilotForSecurityExporter]::new() }
     # "MicrosoftDefenderForCloud" = { [MicrosoftDefenderForCloudExporter]::new() } - Find a way to export
     # "MicrosoftSentinel"         = { [MicrosoftSentinelExporter]::new() } - Find a way to export
     "NetworkSecurityGroups"                 = { [NetworkSecurityGroupsExporter]::new() }
@@ -198,16 +197,16 @@ $exporterMapping = [ordered]@{
 # Then add exporters based on the user's input:
 if ($ResourceTypes -contains "All") {
     foreach ($exporterCreator in $exporterMapping.Values) {
-        $exporterManager.AddExporter((& $exporterCreator))
+        $exporterManager.AddExporter([IAzureResourceExporter](& $exporterCreator))
     }
 }
 else {
     foreach ($resource in $exporterMapping.Keys) {
         if ($ResourceTypes -contains $resource) {
-            $exporterManager.AddExporter((& $exporterMapping[$resource]))
+            $exporterManager.AddExporter([IAzureResourceExporter](& $exporterMapping[$resource]))
         }
     }
 }
 
 # Execute the export process.
-$exporterManager.RunExporters()
+$exporterManager.Export()

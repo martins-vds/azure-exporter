@@ -15,14 +15,14 @@ function Export-ResourcesToJson {
     )
     
     if (-not $Resources) {
-        Write-Host "  No $ResourceType found in subscription: $SubscriptionId"
+        return
     }
-    else {
-        $json = $Resources | ConvertTo-Json -Depth 100
-        $fileName = "$SubscriptionId`_$ResourceType" + "_export.json"
-        $json | Out-File -FilePath $fileName -Encoding utf8
-        Write-Host "  Exported $ResourceType from subscription $SubscriptionId to $fileName"
-    }
+    
+    $json = $Resources | ConvertTo-Json -Depth 100
+    $fileName = "$SubscriptionId`_$ResourceType" + "_export.json"
+    $json | Out-File -FilePath $fileName -Encoding utf8
+
+    Write-Host "    Resources exported to $fileName" -ForegroundColor Blue
 }
 
 ##########################################
@@ -45,13 +45,27 @@ class AzureExporterManager {
     }
 
     # Run all registered exporters for each subscription.
-    [void] RunExporters() {
+    [void] Export() {
         if ($this.Exporters.Count -eq 0) {
             Write-Host "No exporters to run."
             return
         }
         foreach ($exporter in $this.Exporters) {
-            $exporter.Export($this.SubscriptionId)
+            try {
+                Write-Host "Exporting $($exporter.Name)..." -ForegroundColor White
+
+                $count = $exporter.Export($this.SubscriptionId)
+                
+                if ($count -eq 0) {
+                    Write-Host "    No $($exporter.Name) exported." -ForegroundColor Yellow
+                }
+                else {
+                    Write-Host "    $count $($exporter.Name) exported." -ForegroundColor Green
+                }
+            }
+            catch {
+                Write-Host "    Error exporting $($exporter.Name): $_" -ForegroundColor Red
+            }
         }
     }
 }
@@ -62,404 +76,573 @@ class AzureExporterManager {
 
 # Interface defining the Export() method.
 class IAzureResourceExporter {
-    [void] Export([string] $subscriptionId) {
+    [string]   $Name
+
+    [int] Export([string] $subscriptionId) {
         throw [System.NotImplementedException] "Export method is not implemented."
     }
 }
 
 # Export all Virtual Machines in the current subscription.
 class VirtualMachineExporter : IAzureResourceExporter {
-    [void] Export([string] $subscriptionId) {
-        Write-Host "Exporting all Azure Virtual Machines in subscription: $subscriptionId"
-        $vms = Get-AzVM
-        Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "VirtualMachines" -Resources $vms
+    [string] $Name = "Azure Virtual Machines"
+
+    [int] Export([string] $subscriptionId) {
+        
+        $resources = Get-AzVM
+        
+        if (-not $resources) {
+            return 0
+        }
+
+        Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "VirtualMachines" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Export all Storage Accounts in the current subscription.
 class StorageAccountExporter : IAzureResourceExporter {
-    [void] Export([string] $subscriptionId) {
-        Write-Host "Exporting all Azure Storage Accounts in subscription: $subscriptionId"
-        $storageAccounts = Get-AzStorageAccount
-        Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "StorageAccounts" -Resources $storageAccounts
+    [string] $Name = "Azure Storage Accounts"
+
+    [int] Export([string] $subscriptionId) {
+        
+        $resources = Get-AzStorageAccount
+        if (-not $resources) {
+            return 0
+        }
+        Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "StorageAccounts" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Export all Resource Groups in the current subscription.
 class ResourceGroupExporter : IAzureResourceExporter {
-    [void] Export([string] $subscriptionId) {
-        Write-Host "Exporting all Azure Resource Groups in subscription: $subscriptionId"
-        $resourceGroups = Get-AzResourceGroup
-        Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "ResourceGroups" -Resources $resourceGroups
+    [string] $Name = "Azure Resource Groups"
+
+    [int] Export([string] $subscriptionId) {
+        
+        $resources = Get-AzResourceGroup
+        if (-not $resources) {
+            return 0
+        }
+        Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "ResourceGroups" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Microsoft Defender for Cloud
 class MicrosoftDefenderForCloudExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Microsoft Defender for Cloud"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Microsoft Defender for Cloud for subscription: $subscriptionId"
         $resources = Get-AzSecurityCenter  # Placeholder cmdlet
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "MicrosoftDefenderForCloud" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Azure DDoS Protection
 class AzureDdosProtectionExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Azure DDoS Protection"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Azure DDoS Protection for subscription: $subscriptionId"
         $resources = Get-AzDdosProtectionPlan
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AzureDdosProtection" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Key Vault
 class KeyVaultExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Key Vaults"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Key Vaults for subscription: $subscriptionId"
         $resources = Get-AzKeyVault
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "KeyVault" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Microsoft Sentinel
 class MicrosoftSentinelExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Microsoft Sentinel"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Microsoft Sentinel for subscription: $subscriptionId"
         $resources = Get-AzSentinel   # Placeholder cmdlet
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "MicrosoftSentinel" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Roles (Custom and Built-in) for Entra ID and Azure Resources
 class RolesExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Roles"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Roles for subscription: $subscriptionId"
         $resources = Get-AzRoleDefinition
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "Roles" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Azure Spot Virtual Machines
 class AzureSpotVirtualMachinesExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Azure Spot Virtual Machines"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Azure Spot Virtual Machines for subscription: $subscriptionId"
         $resources = Get-AzVM | Where-Object { $_.Priority -eq "Spot" }
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AzureSpotVirtualMachines" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Batch Accounts
 class BatchAccountsExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Batch Accounts"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Batch Accounts for subscription: $subscriptionId"
         $resources = Get-AzBatchAccount
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "BatchAccounts" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Azure Virtual Desktop
 class AzureVirtualDesktopExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Azure Virtual Desktop"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Azure Virtual Desktop for subscription: $subscriptionId"
         $resources = Get-AzWvdHostPool   # Using host pools as a proxy for AVD resources
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AzureVirtualDesktop" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Azure Kubernetes Service
 class AzureKubernetesServiceExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Azure Kubernetes Service"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Azure Kubernetes Service for subscription: $subscriptionId"
         $resources = Get-AzAksCluster
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AzureKubernetesService" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Azure Container Instances
 class AzureContainerInstancesExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Azure Container Instances"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Azure Container Instances for subscription: $subscriptionId"
         $resources = Get-AzContainerInstance
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AzureContainerInstances" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Logic Apps
 class LogicAppsExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Logic Apps"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Logic Apps for subscription: $subscriptionId"
         $resources = Get-AzLogicApp
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "LogicApps" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Azure Functions
 class AzureFunctionsExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Azure Functions"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Azure Functions for subscription: $subscriptionId"
         $resources = Get-AzFunctionApp
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AzureFunctions" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Service Bus
 class ServiceBusExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Service Bus"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Service Bus for subscription: $subscriptionId"
         $resources = Get-AzServiceBusNamespace
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "ServiceBus" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for API Management
 class ApiManagementExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "API Management"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting API Management for subscription: $subscriptionId"
         $resources = Get-AzApiManagement
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "ApiManagement" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Azure Data Factory
 class AzureDataFactoryExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Azure Data Factory"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Azure Data Factory for subscription: $subscriptionId"
         $resources = Get-AzDataFactory
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AzureDataFactory" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Azure Database for MySQL
 class AzureDatabaseForMySQLExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Azure Database for MySQL"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Azure Database for MySQL for subscription: $subscriptionId"
         $resources = Get-AzMySqlServer
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AzureDatabaseForMySQL" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Azure SQL
 class AzureSQLExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Azure SQL"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Azure SQL for subscription: $subscriptionId"
         $resources = Get-AzSqlServer
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AzureSQL" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Azure Database for Postgres
 class AzureDatabaseForPostgresExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Azure Database for Postgres"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Azure Database for Postgres for subscription: $subscriptionId"
         $resources = Get-AzPostgreSqlServer
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AzureDatabaseForPostgres" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for SQL Managed Instances
 class SqlManagedInstancesExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "SQL Managed Instances"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting SQL Managed Instances for subscription: $subscriptionId"
         $resources = Get-AzSqlInstance
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "SqlManagedInstances" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for SQL Server on Azure Virtual Machines
 class SqlServerOnAzureVMsExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "SQL Server on Azure Virtual Machines"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting SQL Server on Azure Virtual Machines for subscription: $subscriptionId"
         $resources = az sql vm list | ConvertFrom-Json
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "SqlServerOnAzureVMs" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Azure Vault Recovery Services
 class AzureVaultRecoveryServicesExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Azure Vault Recovery Services"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Azure Vault Recovery Services for subscription: $subscriptionId"
         $resources = Get-AzRecoveryServicesVault
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AzureVaultRecoveryServices" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Azure Backup
 class AzureBackupExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Azure Backup"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Azure Backup for subscription: $subscriptionId"
         $resources = Get-AzRecoveryServicesBackupItem
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AzureBackup" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Application Gateways
 class ApplicationGatewaysExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Application Gateways"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Application Gateways for subscription: $subscriptionId"
         $resources = Get-AzApplicationGateway
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "ApplicationGateways" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Azure Bastion
 class AzureBastionExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Azure Bastion"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Azure Bastion for subscription: $subscriptionId"
         $resources = Get-AzBastion
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AzureBastion" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Azure Firewall
 class AzureFirewallExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Azure Firewall"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Azure Firewall for subscription: $subscriptionId"
         $resources = Get-AzFirewall
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AzureFirewall" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Azure Express Route Circuits
 class AzureExpressRouteCircuitsExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Azure Express Route Circuits"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Azure Express Route Circuits for subscription: $subscriptionId"
         $resources = Get-AzExpressRouteCircuit
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AzureExpressRouteCircuits" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Azure DNS Zones
 class AzureDnsZonesExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Azure DNS Zones"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Azure DNS Zones for subscription: $subscriptionId"
         $resources = Get-AzDnsZone
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AzureDnsZones" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Azure Front Doors
 class AzureFrontDoorsExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Azure Front Doors"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Azure Front Doors for subscription: $subscriptionId"
         $resources = Get-AzFrontDoor
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AzureFrontDoors" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Azure Private Link Services
 class AzurePrivateLinkServicesExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Azure Private Link Services"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Azure Private Link Services for subscription: $subscriptionId"
         $resources = Get-AzPrivateLinkService
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AzurePrivateLinkServices" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Virtual Networks
 class VirtualNetworksExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Virtual Networks"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Virtual Networks for subscription: $subscriptionId"
         $resources = Get-AzVirtualNetwork
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "VirtualNetworks" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Web Application Firewall Policies
 class WebApplicationFirewallPoliciesExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Web Application Firewall Policies"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Web Application Firewall Policies for subscription: $subscriptionId"
         $resources = Get-AzApplicationGatewayWebApplicationFirewallConfiguration
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "WebApplicationFirewallPolicies" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for VPN Gateways
 class VpnGatewaysExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "VPN Gateways"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting VPN Gateways for subscription: $subscriptionId"
         $resources = Get-AzVirtualNetworkGateway
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "VpnGateways" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Virtual WANs
 class VirtualWansExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Virtual WANs"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Virtual WANs for subscription: $subscriptionId"
         $resources = Get-AzVirtualWan
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "VirtualWans" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Traffic Manager Profiles
 class TrafficManagerProfilesExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Traffic Manager Profiles"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Traffic Manager Profiles for subscription: $subscriptionId"
         $resources = Get-AzTrafficManagerProfile
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "TrafficManagerProfiles" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for Network Security Groups
 class NetworkSecurityGroupsExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "Network Security Groups"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting Network Security Groups for subscription: $subscriptionId"
         $resources = Get-AzNetworkSecurityGroup
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "NetworkSecurityGroups" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for App Configurations
 class AppConfigurationsExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {
+    [string] $Name = "App Configurations"
+
+    [int] Export([string] $subscriptionId) {
         
-        Write-Host "Exporting App Configurations for subscription: $subscriptionId"
         $resources = Get-AzAppConfigurationStore
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AppConfigurations" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Exporter for App Services
 class AppServicesExporter : IAzureResourceExporter {
-    [void] Export([string]$subscriptionId) {        
-        Write-Host "Exporting App Services for subscription: $subscriptionId"
+    [string] $Name = "App Services"
+
+    [int] Export([string] $subscriptionId) {
+        
         $resources = Get-AzWebApp
+        if (-not $resources) {
+            return 0
+        }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AppServices" -Resources $resources
+        return $resources.Count
     }
 }
 
@@ -467,222 +650,266 @@ class AppServicesExporter : IAzureResourceExporter {
 # Experimental Export Strategies
 ##########################################
 
-# Export Conditional Access Policies (Including Configuration Settings / Values)
 class ConditionalAccessPoliciesExporter : IAzureResourceExporter {
-    [void] Export() {
-        $subscriptionId = (Get-AzContext).Subscription.Id
-        Write-Host "Exporting Conditional Access Policies for subscription: $subscriptionId"
+    [string] $Name = "Conditional Access Policies"
+
+    [int] Export([string] $subscriptionId) {
+        
         $resources = Get-AzConditionalAccessPolicy  # Placeholder
+        if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "ConditionalAccessPolicies" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Export Microsoft Entra ID Licensing
 class EntraIDLicensingExporter : IAzureResourceExporter {
-    [void] Export() {
-        $subscriptionId = (Get-AzContext).Subscription.Id
-        Write-Host "Exporting Entra ID Licensing for subscription: $subscriptionId"
+    [string] $Name = "Entra ID Licensing"
+
+    [int] Export([string] $subscriptionId) {
+        
         $resources = Get-AzEntraIDLicensing  # Placeholder
+        if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "EntraIDLicensing" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Export Users, Types and Properties
 class UsersExporter : IAzureResourceExporter {
-    [void] Export() {
-        $subscriptionId = (Get-AzContext).Subscription.Id
-        Write-Host "Exporting Users for subscription: $subscriptionId"
+    [string] $Name = "Users"
+
+    [int] Export([string] $subscriptionId) {
+        
         $resources = Get-AzEntraUser  # Placeholder
+        if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "Users" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Export Groups, Types, Assignments and Properties (Including Dynamic Rules)
 class GroupsExporter : IAzureResourceExporter {
-    [void] Export() {
-        $subscriptionId = (Get-AzContext).Subscription.Id
-        Write-Host "Exporting Groups for subscription: $subscriptionId"
+    [string] $Name = "Groups"
+
+    [int] Export([string] $subscriptionId) {
+        
         $resources = Get-AzEntraGroup  # Placeholder
+        if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "Groups" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Export PIM Configuration / Settings
 class PIMConfigurationExporter : IAzureResourceExporter {
-    [void] Export() {
-        $subscriptionId = (Get-AzContext).Subscription.Id
-        Write-Host "Exporting PIM Configuration for subscription: $subscriptionId"
+    [string] $Name = "PIM Configuration"
+
+    [int] Export([string] $subscriptionId) {
+        
         $resources = Get-AzPimConfiguration  # Placeholder
+        if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "PIMConfiguration" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Export Roles (incl. Custom) and Assignments - Eligible, Permanent (Static) and Active
 class RolesAndAssignmentsExporter : IAzureResourceExporter {
-    [void] Export() {
-        $subscriptionId = (Get-AzContext).Subscription.Id
-        Write-Host "Exporting Roles and Assignments for subscription: $subscriptionId"
+    [string] $Name = "Roles and Assignments"
+
+    [int] Export([string] $subscriptionId) {
+        
         $resources = Get-AzEntraRoleAssignment  # Placeholder
+        if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "RolesAndAssignments" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Export Enterprise Apps, App Registrations, Secrets / Certificates Names and Properties
 class EnterpriseAppsExporter : IAzureResourceExporter {
-    [void] Export() {
-        $subscriptionId = (Get-AzContext).Subscription.Id
-        Write-Host "Exporting Enterprise Apps for subscription: $subscriptionId"
+    [string] $Name = "Enterprise Apps"
+
+    [int] Export([string] $subscriptionId) {
+        
         $resources = Get-AzEnterpriseApplication  # Placeholder
+        if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "EnterpriseApps" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Export Managed Identities and Service Principals Settings / Values
 class ManagedIdentitiesAndServicePrincipalsExporter : IAzureResourceExporter {
-    [void] Export() {
-        $subscriptionId = (Get-AzContext).Subscription.Id
-        Write-Host "Exporting Managed Identities and Service Principals for subscription: $subscriptionId"
+    [string] $Name = "Managed Identities and Service Principals"
+
+    [int] Export([string] $subscriptionId) {
+        
         $resources = Get-AzServicePrincipal  # Placeholder (combine with managed identities as needed)
+        if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "ManagedIdentitiesAndServicePrincipals" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Export Diagnostic Configuration / Settings
 class DiagnosticConfigurationExporter : IAzureResourceExporter {
-    [void] Export() {
-        $subscriptionId = (Get-AzContext).Subscription.Id
-        Write-Host "Exporting Diagnostic Configuration for subscription: $subscriptionId"
+    [string] $Name = "Diagnostic Configuration"
+
+    [int] Export([string] $subscriptionId) {
+        
         $resources = Get-AzDiagnosticSetting  # Placeholder
+        if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "DiagnosticConfiguration" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Export Entra ID, M365 MFA Settings / Configuration (Security Defaults, Unified Policies)
 class MFASettingsExporter : IAzureResourceExporter {
-    [void] Export() {
-        $subscriptionId = (Get-AzContext).Subscription.Id
-        Write-Host "Exporting MFA Settings for subscription: $subscriptionId"
+    [string] $Name = "MFA Settings"
+
+    [int] Export([string] $subscriptionId) {
+        
         $resources = Get-AzMfaSettings  # Placeholder
+        if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "MFASettings" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Export User and Sign-In Risk Settings / Configuration
 class UserAndSignInRiskSettingsExporter : IAzureResourceExporter {
-    [void] Export() {
-        $subscriptionId = (Get-AzContext).Subscription.Id
-        Write-Host "Exporting User and Sign-In Risk Settings for subscription: $subscriptionId"
+    [string] $Name = "User and Sign-In Risk Settings"
+
+    [int] Export([string] $subscriptionId) {
+        
         $resources = Get-AzUserRiskSettings  # Placeholder
+        if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "UserAndSignInRiskSettings" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Export Authentication Method Settings / Configuration
 class AuthenticationMethodSettingsExporter : IAzureResourceExporter {
-    [void] Export() {
-        $subscriptionId = (Get-AzContext).Subscription.Id
-        Write-Host "Exporting Authentication Method Settings for subscription: $subscriptionId"
+    [string] $Name = "Authentication Method Settings"
+
+    [int] Export([string] $subscriptionId) {
+        
         $resources = Get-AzAuthenticationMethodSettings  # Placeholder
+        if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AuthenticationMethodSettings" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Export Identity Protection Configuration / Settings
 class IdentityProtectionExporter : IAzureResourceExporter {
-    [void] Export() {
-        $subscriptionId = (Get-AzContext).Subscription.Id
-        Write-Host "Exporting Identity Protection for subscription: $subscriptionId"
+    [string] $Name = "Identity Protection"
+
+    [int] Export([string] $subscriptionId) {
+        
         $resources = Get-AzIdentityProtection  # Placeholder
+        if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "IdentityProtection" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Export Password Protection Configuration / Settings
 class PasswordProtectionExporter : IAzureResourceExporter {
-    [void] Export() {
-        $subscriptionId = (Get-AzContext).Subscription.Id
-        Write-Host "Exporting Password Protection for subscription: $subscriptionId"
+    [string] $Name = "Password Protection"
+
+    [int] Export([string] $subscriptionId) {
+        
         $resources = Get-AzPasswordProtection  # Placeholder
+        if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "PasswordProtection" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Export Entitlement Management Configuration / Settings
 class EntitlementManagementExporter : IAzureResourceExporter {
-    [void] Export() {
-        $subscriptionId = (Get-AzContext).Subscription.Id
-        Write-Host "Exporting Entitlement Management for subscription: $subscriptionId"
+    [string] $Name = "Entitlement Management"
+
+    [int] Export([string] $subscriptionId) {
+        
         $resources = Get-AzEntitlementManagement  # Placeholder
+        if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "EntitlementManagement" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Export Cross-Tenant Configuration / Settings
 class CrossTenantConfigurationExporter : IAzureResourceExporter {
-    [void] Export() {
-        $subscriptionId = (Get-AzContext).Subscription.Id
-        Write-Host "Exporting Cross-Tenant Configuration for subscription: $subscriptionId"
+    [string] $Name = "Cross-Tenant Configuration"
+
+    [int] Export([string] $subscriptionId) {
+        
         $resources = Get-AzCrossTenantConfiguration  # Placeholder
+        if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "CrossTenantConfiguration" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Export Delegated Partner Permissions (DAP and GDAP)
 class DelegatedPartnerPermissionsExporter : IAzureResourceExporter {
-    [void] Export() {
-        $subscriptionId = (Get-AzContext).Subscription.Id
-        Write-Host "Exporting Delegated Partner Permissions for subscription: $subscriptionId"
+    [string] $Name = "Delegated Partner Permissions"
+
+    [int] Export([string] $subscriptionId) {
+        
         $resources = Get-AzDelegatedPartnerPermission  # Placeholder
+        if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "DelegatedPartnerPermissions" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Export SSPR Configuration / Settings (Including Administrators)
 class SSPRConfigurationExporter : IAzureResourceExporter {
-    [void] Export() {
-        $subscriptionId = (Get-AzContext).Subscription.Id
-        Write-Host "Exporting SSPR Configuration for subscription: $subscriptionId"
+    [string] $Name = "SSPR Configuration"
+
+    [int] Export([string] $subscriptionId) {
+        
         $resources = Get-AzSSPRConfiguration  # Placeholder
+        if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "SSPRConfiguration" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Export Administrative Units Configuration / Settings (Including Restricted Management Units)
 class AdministrativeUnitsExporter : IAzureResourceExporter {
-    [void] Export() {
-        $subscriptionId = (Get-AzContext).Subscription.Id
-        Write-Host "Exporting Administrative Units for subscription: $subscriptionId"
+    [string] $Name = "Administrative Units"
+
+    [int] Export([string] $subscriptionId) {
+        
         $resources = Get-AzAdministrativeUnit  # Placeholder
+        if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AdministrativeUnits" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Export Entra Connect or Cloud Sync Configuration / Settings
 class EntraConnectConfigurationExporter : IAzureResourceExporter {
-    [void] Export() {
-        $subscriptionId = (Get-AzContext).Subscription.Id
-        Write-Host "Exporting Entra Connect Configuration for subscription: $subscriptionId"
+    [string] $Name = "Entra Connect Configuration"
+
+    [int] Export([string] $subscriptionId) {
+        
         $resources = Get-AzEntraConnectConfiguration  # Placeholder
+        if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "EntraConnectConfiguration" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Export Entra Permissions Management
 class EntraPermissionsManagementExporter : IAzureResourceExporter {
-    [void] Export() {
-        $subscriptionId = (Get-AzContext).Subscription.Id
-        Write-Host "Exporting Entra Permissions Management for subscription: $subscriptionId"
+    [string] $Name = "Entra Permissions Management"
+
+    [int] Export([string] $subscriptionId) {
+        
         $resources = Get-AzEntraPermissionsManagement  # Placeholder
+        if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "EntraPermissionsManagement" -Resources $resources
+        return $resources.Count
     }
 }
 
-# Export AD B2C Configuration / Settings
 class ADB2CConfigurationExporter : IAzureResourceExporter {
-    [void] Export() {
-        $subscriptionId = (Get-AzContext).Subscription.Id
-        Write-Host "Exporting AD B2C Configuration for subscription: $subscriptionId"
+    [string] $Name = "AD B2C Configuration"
+
+    [int] Export([string] $subscriptionId) {
+        
         $resources = Get-AzADB2CConfiguration  # Placeholder
+        if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "ADB2CConfiguration" -Resources $resources
+        return $resources.Count
     }
 }
