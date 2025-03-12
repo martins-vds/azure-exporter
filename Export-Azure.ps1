@@ -67,9 +67,7 @@ param (
         "EntitlementManagement",
         "EntraConnectConfiguration",
         "EntraIDLicensing",
-        "EntraPermissionsManagement",
         "Groups",
-        "IdentityProtection",
         "KeyVault",
         "LogicApps",
         "ManagedIdentitiesAndServicePrincipals",
@@ -435,8 +433,16 @@ class AzureDataFactoryExporter : IAzureResourceExporter {
     [string] $Name = "Azure Data Factory"
 
     [int] Export([string] $subscriptionId) {
+        $resources = @()
+
+        Get-AzResourceGroup | ForEach-Object {
+            $resourceGroup = $_.ResourceGroupName
+            $dataFactories = Get-AzDataFactoryV2 -ResourceGroupName $resourceGroup
+            if ($dataFactories) {
+                $resources += $dataFactories
+            }
+        }
         
-        $resources = Get-AzDataFactory
         if (-not $resources) {
             return 0
         }
@@ -673,11 +679,20 @@ class VpnGatewaysExporter : IAzureResourceExporter {
     [string] $Name = "VPN Gateways"
 
     [int] Export([string] $subscriptionId) {
-        
-        $resources = Get-AzVirtualNetworkGateway
+        $resources = @()
+
+        Get-AzResourceGroup | ForEach-Object {
+            $resourceGroup = $_.ResourceGroupName
+            $vpnGateways = Get-AzVirtualNetworkGateway -ResourceGroupName $resourceGroup
+            if ($vpnGateways) {
+                $resources += $vpnGateways
+            }
+        }
+
         if (-not $resources) {
             return 0
         }
+
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "VpnGateways" -Resources $resources
         return $resources.Count
     }
@@ -769,6 +784,7 @@ class ConditionalAccessPoliciesExporter : IAzureResourceExporter {
     }
 }
 
+# TODO: Select only assigned licenses and UPNs.
 class EntraIDLicensingExporter : IAzureResourceExporter {
     [string] $Name = "Entra ID Licensing"
 
@@ -785,7 +801,7 @@ class UsersExporter : IAzureResourceExporter {
 
     [int] Export([string] $subscriptionId) {
         
-        $resources = Get-AzEntraUser  # Placeholder
+        $resources = Get-MgUser -All
         if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "Users" -Resources $resources
         return $resources.Count
@@ -797,7 +813,7 @@ class GroupsExporter : IAzureResourceExporter {
 
     [int] Export([string] $subscriptionId) {
         
-        $resources = Get-AzEntraGroup  # Placeholder
+        $resources = Get-MgGroup -All
         if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "Groups" -Resources $resources
         return $resources.Count
@@ -809,7 +825,7 @@ class PIMConfigurationExporter : IAzureResourceExporter {
 
     [int] Export([string] $subscriptionId) {
         
-        $resources = Get-AzPimConfiguration  # Placeholder
+        $resources = Get-MgRoleManagementDirectoryRoleEligibilitySchedule -All
         if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "PIMConfiguration" -Resources $resources
         return $resources.Count
@@ -833,7 +849,7 @@ class EnterpriseAppsExporter : IAzureResourceExporter {
 
     [int] Export([string] $subscriptionId) {
         
-        $resources = Get-MgApplication -all  # Placeholder
+        $resources = Get-MgApplication -All
         if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "EnterpriseApps" -Resources $resources
         return $resources.Count
@@ -845,7 +861,10 @@ class ManagedIdentitiesAndServicePrincipalsExporter : IAzureResourceExporter {
 
     [int] Export([string] $subscriptionId) {
         
-        $resources = Get-AzServicePrincipal  # Placeholder (combine with managed identities as needed)
+        $resources = Get-MgServicePrincipal -All
+        $resources += Get-AzSystemAssignedIdentity -Scope "/subscriptions/$subscriptionId"
+        $resources += Get-AzUserAssignedIdentity
+
         if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "ManagedIdentitiesAndServicePrincipals" -Resources $resources
         return $resources.Count
@@ -876,12 +895,13 @@ class MFASettingsExporter : IAzureResourceExporter {
     }
 }
 
+# Should this export all risky users and sign-ins?
 class UserAndSignInRiskSettingsExporter : IAzureResourceExporter {
     [string] $Name = "User and Sign-In Risk Settings"
 
     [int] Export([string] $subscriptionId) {
         
-        $resources = Get-AzUserRiskSettings  # Placeholder
+        $resources = Get-MgRiskyUser -All
         if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "UserAndSignInRiskSettings" -Resources $resources
         return $resources.Count
@@ -896,18 +916,6 @@ class AuthenticationMethodSettingsExporter : IAzureResourceExporter {
         $resources = Get-AzAuthenticationMethodSettings  # Placeholder
         if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AuthenticationMethodSettings" -Resources $resources
-        return $resources.Count
-    }
-}
-
-class IdentityProtectionExporter : IAzureResourceExporter {
-    [string] $Name = "Identity Protection"
-
-    [int] Export([string] $subscriptionId) {
-        
-        $resources = Get-AzIdentityProtection  # Placeholder
-        if (-not $resources) { return 0 }
-        Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "IdentityProtection" -Resources $resources
         return $resources.Count
     }
 }
@@ -929,7 +937,7 @@ class EntitlementManagementExporter : IAzureResourceExporter {
 
     [int] Export([string] $subscriptionId) {
         
-        $resources = Get-AzEntitlementManagement  # Placeholder
+        $resources = Get-MgEntitlementManagementAccessPackage -All
         if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "EntitlementManagement" -Resources $resources
         return $resources.Count
@@ -996,18 +1004,6 @@ class EntraConnectConfigurationExporter : IAzureResourceExporter {
     }
 }
 
-class EntraPermissionsManagementExporter : IAzureResourceExporter {
-    [string] $Name = "Entra Permissions Management"
-
-    [int] Export([string] $subscriptionId) {
-        
-        $resources = Get-AzEntraPermissionsManagement  # Placeholder
-        if (-not $resources) { return 0 }
-        Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "EntraPermissionsManagement" -Resources $resources
-        return $resources.Count
-    }
-}
-
 class ADB2CConfigurationExporter : IAzureResourceExporter {
     [string] $Name = "AD B2C Configuration"
 
@@ -1040,7 +1036,7 @@ if ($SkipLogin -eq $false) {
     Connect-AzAccount -Tenant $Tenant -Subscription $Subscription -Scope CurrentUser | Out-Null
 
     # Connect to Microsoft Graph for Azure AD resources. Need to consent to the permissions.
-    # Connect-MgGraph -Scopes Application.Read.All, User.Read.All, Organization.Read.All -NoWelcome | Out-Null
+    # Connect-MgGraph -Scopes EntitlementManagement.Read.All,IdentityRiskEvent.Read.All, IdentityRiskyUser.ReadWrite.All, Directory.Read.All, RoleManagement.Read.Directory, Application.Read.All, User.Read.All, Organization.Read.All, Group.ReadWrite.All -NoWelcome | Out-Null
 
     # Some azure resources can only be exported through Az cli.
     az login --tenant $Tenant | Out-Null
@@ -1069,7 +1065,7 @@ $exporterMapping = [ordered]@{
     # "AzureContainerInstances"   = { [AzureContainerInstancesExporter]::new() } - Find a way to export
     "AzureDatabaseForMySQL"                 = { [AzureDatabaseForMySQLExporter]::new() }
     "AzureDatabaseForPostgres"              = { [AzureDatabaseForPostgresExporter]::new() }
-    # "AzureDataFactory"          = { [AzureDataFactoryExporter]::new() } - Asks for resource group name
+    "AzureDataFactory"                      = { [AzureDataFactoryExporter]::new() }
     "AzureDdosProtection"                   = { [AzureDdosProtectionExporter]::new() }
     "AzureDnsZones"                         = { [AzureDnsZonesExporter]::new() }
     "AzureExpressRouteCircuits"             = { [AzureExpressRouteCircuitsExporter]::new() }
@@ -1089,15 +1085,13 @@ $exporterMapping = [ordered]@{
     # "DiagnosticConfiguration"               = { [DiagnosticConfigurationExporter]::new() } - Asks for resource id
     # "EntraConnectConfiguration"             = { [EntraConnectConfigurationExporter]::new() } - Find a way to export. What is this?
     "EntraIDLicensing"                      = { [EntraIDLicensingExporter]::new() }
-    "EntraPermissionsManagement"            = { [EntraPermissionsManagementExporter]::new() }
     "EnterpriseApps"                        = { [EnterpriseAppsExporter]::new() }
     "EntitlementManagement"                 = { [EntitlementManagementExporter]::new() }
     "Groups"                                = { [GroupsExporter]::new() }
-    "IdentityProtection"                    = { [IdentityProtectionExporter]::new() }
     "KeyVault"                              = { [KeyVaultExporter]::new() }
     "LogicApps"                             = { [LogicAppsExporter]::new() }
     "ManagedIdentitiesAndServicePrincipals" = { [ManagedIdentitiesAndServicePrincipalsExporter]::new() }
-    "MFASettings"                           = { [MFASettingsExporter]::new() }
+    # "MFASettings"                           = { [MFASettingsExporter]::new() } - Find a way to export. Should this be exported by user?
     # "MicrosoftDefenderForCloud" = { [MicrosoftDefenderForCloudExporter]::new() } - Find a way to export
     # "MicrosoftSentinel"         = { [MicrosoftSentinelExporter]::new() } - Find a way to export
     "NetworkSecurityGroups"                 = { [NetworkSecurityGroupsExporter]::new() }
@@ -1115,7 +1109,7 @@ $exporterMapping = [ordered]@{
     "VirtualMachines"                       = { [VirtualMachineExporter]::new() }
     "VirtualNetworks"                       = { [VirtualNetworksExporter]::new() }
     "VirtualWans"                           = { [VirtualWansExporter]::new() }
-    # "VpnGateways"             = { [VpnGatewaysExporter]::new() } - Asks for resource group name
+    "VpnGateways"                           = { [VpnGatewaysExporter]::new() }
     # "WebApplicationFirewallPolicies" = { [WebApplicationFirewallPoliciesExporter]::new() } - Find a way to export
 }
 
