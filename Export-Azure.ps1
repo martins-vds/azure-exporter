@@ -1036,7 +1036,7 @@ if ($SkipLogin -eq $false) {
     Connect-AzAccount -Tenant $Tenant -Subscription $Subscription -Scope CurrentUser | Out-Null
 
     # Connect to Microsoft Graph for Azure AD resources. Need to consent to the permissions.
-    # Connect-MgGraph -Scopes EntitlementManagement.Read.All,IdentityRiskEvent.Read.All, IdentityRiskyUser.ReadWrite.All, Directory.Read.All, RoleManagement.Read.Directory, Application.Read.All, User.Read.All, Organization.Read.All, Group.ReadWrite.All -NoWelcome | Out-Null
+    Connect-MgGraph -Scopes EntitlementManagement.Read.All,IdentityRiskEvent.Read.All, IdentityRiskyUser.ReadWrite.All, Directory.Read.All, RoleManagement.Read.Directory, Application.Read.All, User.Read.All, Organization.Read.All, Group.ReadWrite.All -NoWelcome | Out-Null
 
     # Some azure resources can only be exported through Az cli.
     az login --tenant $Tenant | Out-Null
