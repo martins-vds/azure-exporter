@@ -1,26 +1,48 @@
 <#
 .SYNOPSIS
-    Exports Azure resources from one or more subscriptions.
+    Exports a wide range of Azure and Entra ID (Azure AD) resources to JSON files for backup, documentation, or migration purposes.
 
 .DESCRIPTION
-    This script exports Virtual Machines, Storage Accounts, and Resource Groups from Azure.
-    Use the -SubscriptionIds parameter to specify one or more subscription IDs. If omitted,
-    the script will export resources from all subscriptions the logged-in user has access to.
-    Use the -ResourceTypes parameter to specify which resources to export. Allowed values:
-    "VirtualMachines", "StorageAccounts", "ResourceGroups", "All". Default is "All".
+    This script connects to Azure and Microsoft Graph, then exports selected resource types from a given subscription and tenant.
+    Each resource type is exported to a separate JSON file, named using the subscription ID and resource type.
+    The script supports exporting all resources or a specific subset, using a modular exporter strategy pattern for extensibility.
 
-.PARAMETER SubscriptionIds
-    An optional array of subscription IDs. If not provided, all accessible subscriptions are used.
+.PARAMETER Tenant
+    The Azure Active Directory tenant ID (GUID or domain name) to connect to.
+
+.PARAMETER Subscription
+    The Azure subscription ID (GUID) to export resources from.
 
 .PARAMETER ResourceTypes
-    An optional array of resource types to export. Allowed values are "VirtualMachines",
-    "StorageAccounts", "ResourceGroups", or "All". Default is "All".
+    An array of resource types to export. Use "All" to export all supported types.
+    Supported values include (but are not limited to): VirtualMachines, StorageAccounts, ResourceGroups, Users, Groups, Roles, etc.
+
+.PARAMETER SkipLogin
+    If specified, skips the login process. Use this if you are already authenticated in your session.
 
 .EXAMPLE
-    .\Export.ps1 -SubscriptionIds "sub-id-1", "sub-id-2" -ResourceTypes "VirtualMachines", "ResourceGroups"
+    .\Export-Azure.ps1 -Tenant "contoso.onmicrosoft.com" -Subscription "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+    Exports all supported resources from the specified tenant and subscription.
+
+.EXAMPLE
+    .\Export-Azure.ps1 -Tenant "contoso.onmicrosoft.com" -Subscription "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" -ResourceTypes "VirtualMachines","Users"
+
+    Exports only Virtual Machines and Users from the specified tenant and subscription.
 
 .NOTES
-    Requires the Az PowerShell module.
+    - Requires the Az PowerShell module and Microsoft.Graph module.
+    - Some resources require Azure CLI (az) to be installed and available in PATH.
+    - Output files are written to the current directory, named as <SubscriptionId>_<ResourceType>_export.json.
+    - A log file is generated for each run, named ExportLog_<SubscriptionId>_<timestamp>.log.
+    - The script uses a strategy pattern for exporters, making it easy to add support for new resource types.
+    - For Entra ID (Azure AD) resources, appropriate Microsoft Graph permissions are required.
+
+.LIMITATIONS
+    - Some exporters are placeholders and may require further implementation.
+    - The script assumes you have sufficient permissions to read all selected resources.
+    - For large tenants/subscriptions, exporting all resources may take significant time and produce large files.
+
 #>
 
 param (
@@ -782,7 +804,7 @@ class ConditionalAccessPoliciesExporter : IAzureResourceExporter {
 
     [int] Export([string] $subscriptionId) {
         
-        $resources = Get-AzConditionalAccessPolicy  # Placeholder
+        $resources = Get-MgIdentityConditionalAccessPolicy -All
         if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "ConditionalAccessPolicies" -Resources $resources
         return $resources.Count
@@ -1005,7 +1027,7 @@ if ($SkipLogin -eq $false) {
     Connect-AzAccount -Tenant $Tenant -Subscription $Subscription -Scope CurrentUser | Out-Null
 
     # Connect to Microsoft Graph for Azure AD resources. Need to consent to the permissions.
-    Connect-MgGraph -Scopes EntitlementManagement.Read.All, IdentityRiskEvent.Read.All, IdentityRiskyUser.ReadWrite.All, Directory.Read.All, RoleManagement.Read.Directory, Application.Read.All, User.Read.All, Organization.Read.All, Group.ReadWrite.All -NoWelcome | Out-Null
+    Connect-MgGraph -Scopes 'Application.Read.All' 'Directory.Read.All' 'Group.ReadWrite.All' 'IdentityRiskEvent.Read.All' 'IdentityRiskyUser.ReadWrite.All' 'Organization.Read.All' 'Policy.Read.All' 'RoleManagement.Read.Directory' 'User.Read.All' 'EntitlementManagement.Read.All' -NoWelcome | Out-Null
 
     # Some azure resources can only be exported through Az cli.
     az login --tenant $Tenant | Out-Null
@@ -1048,7 +1070,7 @@ $exporterMapping = [ordered]@{
     "AzureVaultRecoveryServices"            = { [AzureVaultRecoveryServicesExporter]::new() }
     "AzureVirtualDesktop"                   = { [AzureVirtualDesktopExporter]::new() }
     "BatchAccounts"                         = { [BatchAccountsExporter]::new() }
-    # "ConditionalAccessPolicies"             = { [ConditionalAccessPoliciesExporter]::new() } - Find a way to export    
+    "ConditionalAccessPolicies"             = { [ConditionalAccessPoliciesExporter]::new() }
     "EntraIDLicensing"                      = { [EntraIDLicensingExporter]::new() }
     "EnterpriseApps"                        = { [EnterpriseAppsExporter]::new() }
     "EntitlementManagement"                 = { [EntitlementManagementExporter]::new() }
