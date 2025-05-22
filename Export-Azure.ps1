@@ -37,9 +37,8 @@ param (
         "AdministrativeUnits",
         "ApiManagement",
         "AppConfigurations",
-        "ApplicationGateways",
         "AppServices",
-        "AuthenticationMethodSettings",
+        "ApplicationGateways",
         "AzureBackup",
         "AzureBastion",
         "AzureContainerInstances",
@@ -54,36 +53,29 @@ param (
         "AzureFunctions",
         "AzureKubernetesService",
         "AzurePrivateLinkServices",
-        "AzureSpotVirtualMachines",
         "AzureSQL",
+        "AzureSpotVirtualMachines",
         "AzureVaultRecoveryServices",
         "AzureVirtualDesktop",
         "BatchAccounts",
         "ConditionalAccessPolicies",
-        "CrossTenantConfiguration",
-        "DelegatedPartnerPermissions",
-        "DiagnosticConfiguration",
+        "EntraIDLicensing",
         "EnterpriseApps",
         "EntitlementManagement",
-        "EntraConnectConfiguration",
-        "EntraIDLicensing",
         "Groups",
         "KeyVault",
         "LogicApps",
         "ManagedIdentitiesAndServicePrincipals",
         "MFASettings",
-        "MicrosoftCopilotForSecurity",
-        "MicrosoftDefenderForCloud",
         "MicrosoftSentinel",
         "NetworkSecurityGroups",
-        "PasswordProtection",
         "PIMConfiguration",
         "ResourceGroups",
+        "Roles",
         "RoleAssignments",
         "ServiceBus",
         "SqlManagedInstances",
         "SqlServerOnAzureVMs",
-        "SSPRConfiguration",
         "StorageAccounts",
         "TrafficManagerProfiles",
         "UserAndSignInRiskSettings",
@@ -92,7 +84,7 @@ param (
         "VirtualNetworks",
         "VirtualWans",
         "VpnGateways",
-        "WebApplicationFirewallPolicies"              
+        "WebApplicationFirewallPolicies"             
     )]
     [string[]] $ResourceTypes = @("All"),
     [Parameter(Mandatory = $false)]
@@ -175,6 +167,30 @@ class AzureExporterManager {
     }
 }
 
+function Get-AzRest {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SubscriptionId,
+        [Parameter(Mandatory = $true)]
+        [string]$Provider,        
+        [Parameter(Mandatory = $true)]
+        [string]$ApiVersion,
+        [Parameter(Mandatory = $false)]
+        [string]$ResourceType
+    )
+
+    $Url = "https://management.azure.com/subscriptions/{subscriptionId}/providers/$($Provider)"
+
+    if ($ResourceType) {
+        $Url = "$Url/$($ResourceType)?api-version=$($ApiVersion)"
+    }
+    else {
+        $Url = "$Url?api-version=$($ApiVersion)"
+    }
+
+    return @(az rest --method get --url "https://management.azure.com/subscriptions/$($SubscriptionId)/providers/$($Provider)/$($ResourceType)?api-version=$($ApiVersion)" | ConvertFrom-Json | Select-Object -ExpandProperty value)
+}
+
 ##########################################
 # Strategy Interface and Export Strategies
 ##########################################
@@ -233,20 +249,6 @@ class ResourceGroupExporter : IAzureResourceExporter {
     }
 }
 
-class MicrosoftDefenderForCloudExporter : IAzureResourceExporter {
-    [string] $Name = "Microsoft Defender for Cloud"
-
-    [int] Export([string] $subscriptionId) {
-        
-        $resources = Get-AzSecurityCenter  # Placeholder cmdlet
-        if (-not $resources) {
-            return 0
-        }
-        Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "MicrosoftDefenderForCloud" -Resources $resources
-        return $resources.Count
-    }
-}
-
 class AzureDdosProtectionExporter : IAzureResourceExporter {
     [string] $Name = "Azure DDoS Protection"
 
@@ -280,7 +282,7 @@ class MicrosoftSentinelExporter : IAzureResourceExporter {
 
     [int] Export([string] $subscriptionId) {
         
-        $resources = Get-AzSentinel   # Placeholder cmdlet
+        $resources = Get-AzRest -SubscriptionId $subscriptionId -Provider "Microsoft.SentinelPlatformServices" -ApiVersion "2023-01-01"
         if (-not $resources) {
             return 0
         }
@@ -364,7 +366,7 @@ class AzureContainerInstancesExporter : IAzureResourceExporter {
 
     [int] Export([string] $subscriptionId) {
         
-        $resources = Get-AzContainerInstance
+        $resources = az container list | ConvertFrom-Json
         if (-not $resources) {
             return 0
         }
@@ -540,7 +542,7 @@ class AzureBackupExporter : IAzureResourceExporter {
 
     [int] Export([string] $subscriptionId) {
         
-        $resources = Get-AzRecoveryServicesBackupItem
+        $resources = az backup vault list | ConvertFrom-Json
         if (-not $resources) {
             return 0
         }
@@ -666,7 +668,10 @@ class WebApplicationFirewallPoliciesExporter : IAzureResourceExporter {
 
     [int] Export([string] $subscriptionId) {
         
-        $resources = Get-AzApplicationGatewayWebApplicationFirewallConfiguration
+        $resources = Get-AzRest -SubscriptionId $subscriptionId -Provider "Microsoft.Network" -ResourceType "frontdoorWebApplicationFirewallPolicies" -ApiVersion "2025-03-01"
+        $resources += Get-AzRest -SubscriptionId $subscriptionId -Provider "Microsoft.Network" -ResourceType "applicationGatewayWebApplicationFirewallPolicies" -ApiVersion "2024-07-01"
+        $resources += Get-AzRest -SubscriptionId $subscriptionId -Provider "Microsoft.Network" -ResourceType "CdnWebApplicationFirewallPolicies" -ApiVersion "2025-04-15"                
+        
         if (-not $resources) {
             return 0
         }
@@ -871,24 +876,12 @@ class ManagedIdentitiesAndServicePrincipalsExporter : IAzureResourceExporter {
     }
 }
 
-class DiagnosticConfigurationExporter : IAzureResourceExporter {
-    [string] $Name = "Diagnostic Configuration"
-
-    [int] Export([string] $subscriptionId) {
-        
-        $resources = Get-AzDiagnosticSetting  # Placeholder
-        if (-not $resources) { return 0 }
-        Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "DiagnosticConfiguration" -Resources $resources
-        return $resources.Count
-    }
-}
-
 class MFASettingsExporter : IAzureResourceExporter {
     [string] $Name = "MFA Settings"
 
     [int] Export([string] $subscriptionId) {
         
-        $resources = Get-AzMfaSettings  # Placeholder
+        $resources = Get-MgReportAuthenticationMethodUserRegistrationDetail -All
         if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "MFASettings" -Resources $resources
         return $resources.Count
@@ -944,18 +937,6 @@ class EntitlementManagementExporter : IAzureResourceExporter {
     }
 }
 
-class CrossTenantConfigurationExporter : IAzureResourceExporter {
-    [string] $Name = "Cross-Tenant Configuration"
-
-    [int] Export([string] $subscriptionId) {
-        
-        $resources = Get-AzCrossTenantConfiguration  # Placeholder
-        if (-not $resources) { return 0 }
-        Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "CrossTenantConfiguration" -Resources $resources
-        return $resources.Count
-    }
-}
-
 class DelegatedPartnerPermissionsExporter : IAzureResourceExporter {
     [string] $Name = "Delegated Partner Permissions"
 
@@ -985,21 +966,9 @@ class AdministrativeUnitsExporter : IAzureResourceExporter {
 
     [int] Export([string] $subscriptionId) {
         
-        $resources = Get-AzAdministrativeUnit  # Placeholder
+        $resources = Get-AzRest -SubscriptionId $subscriptionId -Provider "Microsoft.Management" -ResourceType "managementGroups" -ApiVersion "2023-04-01"
         if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "AdministrativeUnits" -Resources $resources
-        return $resources.Count
-    }
-}
-
-class EntraConnectConfigurationExporter : IAzureResourceExporter {
-    [string] $Name = "Entra Connect Configuration"
-
-    [int] Export([string] $subscriptionId) {
-        
-        $resources = Get-AzEntraConnectConfiguration  # Placeholder
-        if (-not $resources) { return 0 }
-        Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "EntraConnectConfiguration" -Resources $resources
         return $resources.Count
     }
 }
@@ -1009,7 +978,7 @@ class ADB2CConfigurationExporter : IAzureResourceExporter {
 
     [int] Export([string] $subscriptionId) {
         
-        $resources = Get-AzADB2CConfiguration  # Placeholder
+        $resources = Get-AzRest -SubscriptionId $subscriptionId -Provider "Microsoft.AzureActiveDirectory" -ResourceType "b2cDirectories" -ApiVersion "2021-04-01"
         if (-not $resources) { return 0 }
         Export-ResourcesToJson -SubscriptionId $subscriptionId -ResourceType "ADB2CConfiguration" -Resources $resources
         return $resources.Count
@@ -1036,7 +1005,7 @@ if ($SkipLogin -eq $false) {
     Connect-AzAccount -Tenant $Tenant -Subscription $Subscription -Scope CurrentUser | Out-Null
 
     # Connect to Microsoft Graph for Azure AD resources. Need to consent to the permissions.
-    Connect-MgGraph -Scopes EntitlementManagement.Read.All,IdentityRiskEvent.Read.All, IdentityRiskyUser.ReadWrite.All, Directory.Read.All, RoleManagement.Read.Directory, Application.Read.All, User.Read.All, Organization.Read.All, Group.ReadWrite.All -NoWelcome | Out-Null
+    Connect-MgGraph -Scopes EntitlementManagement.Read.All, IdentityRiskEvent.Read.All, IdentityRiskyUser.ReadWrite.All, Directory.Read.All, RoleManagement.Read.Directory, Application.Read.All, User.Read.All, Organization.Read.All, Group.ReadWrite.All -NoWelcome | Out-Null
 
     # Some azure resources can only be exported through Az cli.
     az login --tenant $Tenant | Out-Null
@@ -1054,15 +1023,15 @@ $exporterManager = [AzureExporterManager]::new($Subscription)
 # Mapping: resource type => exporter class name
 # Define a mapping from resource type to a scriptblock that returns a new exporter instance.
 $exporterMapping = [ordered]@{
-    # "ADB2CConfiguration"                    = { [ADB2CConfigurationExporter]::new() } - Find a way to export
-    # "AdministrativeUnits"                   = { [AdministrativeUnitsExporter]::new() } - Find a way to export
+    "ADB2CConfiguration"                    = { [ADB2CConfigurationExporter]::new() }
+    "AdministrativeUnits"                   = { [AdministrativeUnitsExporter]::new() }
     "ApiManagement"                         = { [IAzureResourceExporter]([ApiManagementExporter]::new()) }
     "AppConfigurations"                     = { [AppConfigurationsExporter]::new() }
     "AppServices"                           = { [AppServicesExporter]::new() }
     "ApplicationGateways"                   = { [ApplicationGatewaysExporter]::new() }
-    # "AzureBackup"              = { [AzureBackupExporter]::new() } - Asks for a container name
+    "AzureBackup"                           = { [AzureBackupExporter]::new() }
     "AzureBastion"                          = { [AzureBastionExporter]::new() }
-    # "AzureContainerInstances"   = { [AzureContainerInstancesExporter]::new() } - Find a way to export
+    "AzureContainerInstances"               = { [AzureContainerInstancesExporter]::new() }
     "AzureDatabaseForMySQL"                 = { [AzureDatabaseForMySQLExporter]::new() }
     "AzureDatabaseForPostgres"              = { [AzureDatabaseForPostgresExporter]::new() }
     "AzureDataFactory"                      = { [AzureDataFactoryExporter]::new() }
@@ -1079,11 +1048,7 @@ $exporterMapping = [ordered]@{
     "AzureVaultRecoveryServices"            = { [AzureVaultRecoveryServicesExporter]::new() }
     "AzureVirtualDesktop"                   = { [AzureVirtualDesktopExporter]::new() }
     "BatchAccounts"                         = { [BatchAccountsExporter]::new() }
-    # "ConditionalAccessPolicies"             = { [ConditionalAccessPoliciesExporter]::new() } - Find a way to export
-    # "CrossTenantConfiguration"              = { [CrossTenantConfigurationExporter]::new() } - Find a way to export
-    # "DelegatedPartnerPermissions"           = { [DelegatedPartnerPermissionsExporter]::new() } - Find a way to export
-    # "DiagnosticConfiguration"               = { [DiagnosticConfigurationExporter]::new() } - Asks for resource id
-    # "EntraConnectConfiguration"             = { [EntraConnectConfigurationExporter]::new() } - Find a way to export. What is this?
+    # "ConditionalAccessPolicies"             = { [ConditionalAccessPoliciesExporter]::new() } - Find a way to export    
     "EntraIDLicensing"                      = { [EntraIDLicensingExporter]::new() }
     "EnterpriseApps"                        = { [EnterpriseAppsExporter]::new() }
     "EntitlementManagement"                 = { [EntitlementManagementExporter]::new() }
@@ -1091,9 +1056,8 @@ $exporterMapping = [ordered]@{
     "KeyVault"                              = { [KeyVaultExporter]::new() }
     "LogicApps"                             = { [LogicAppsExporter]::new() }
     "ManagedIdentitiesAndServicePrincipals" = { [ManagedIdentitiesAndServicePrincipalsExporter]::new() }
-    # "MFASettings"                           = { [MFASettingsExporter]::new() } - Find a way to export. Should this be exported by user?
-    # "MicrosoftDefenderForCloud" = { [MicrosoftDefenderForCloudExporter]::new() } - Find a way to export
-    # "MicrosoftSentinel"         = { [MicrosoftSentinelExporter]::new() } - Find a way to export
+    "MFASettings"                           = { [MFASettingsExporter]::new() }
+    "MicrosoftSentinel"                     = { [MicrosoftSentinelExporter]::new() }
     "NetworkSecurityGroups"                 = { [NetworkSecurityGroupsExporter]::new() }
     "PIMConfiguration"                      = { [PIMConfigurationExporter]::new() }
     "ResourceGroups"                        = { [ResourceGroupExporter]::new() }
@@ -1110,7 +1074,7 @@ $exporterMapping = [ordered]@{
     "VirtualNetworks"                       = { [VirtualNetworksExporter]::new() }
     "VirtualWans"                           = { [VirtualWansExporter]::new() }
     "VpnGateways"                           = { [VpnGatewaysExporter]::new() }
-    # "WebApplicationFirewallPolicies" = { [WebApplicationFirewallPoliciesExporter]::new() } - Find a way to export
+    "WebApplicationFirewallPolicies"        = { [WebApplicationFirewallPoliciesExporter]::new() }
 }
 
 # Then add exporters based on the user's input:
